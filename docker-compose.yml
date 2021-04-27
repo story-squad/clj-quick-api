@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  redis:
+    container_name: redis-cache
+    image: redis
+    ports:
+      - '6379:6379'
+    networks:
+      redis:
+        aliases:
+          - redis
+networks:
+  redis:
+    driver: bridge
