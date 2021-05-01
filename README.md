@@ -26,7 +26,7 @@ Install [Clojure](https://clojure.org) & [Leiningen](https://leiningen.org/#inst
 
 to start an interactive REPL,
 ```
-lein run repl
+lein repl
 ```
 start the API
 > note: (-main) is only invoked once, at startup.
