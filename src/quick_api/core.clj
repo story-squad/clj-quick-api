@@ -14,7 +14,8 @@
    [muuntaja.core :as m]
    [reitit.ring.middleware.muuntaja :as muuntaja]
    [quick-api.atom :refer [state]]
-   [quick-api.cache :as cache])
+   [quick-api.cache :as cache]
+   [quick-api.fluxx :as fluxx])
   (:gen-class))
 
 (defn update-cache []
@@ -54,7 +55,7 @@
 
 (defn create-page [{{:keys [page-data]} :body-params}]
   (if page-data (let [id (str (java.util.UUID/randomUUID))]
-                  (swap! state update-in [:pages] conj {:id id :text page-data :ts (timestamp) })
+                  (swap! state update-in [:pages] conj {:id id :text page-data :ts (timestamp)})
                   (update-cache)
                   {:status 201 :body {:id id :text page-data}})
       {:status 400 :body {:error "missing :page-data"}}))
@@ -89,6 +90,34 @@
       (update-cache))
     (list-pages true)))
 
+
+(defn get-json-game-state
+  "return game-state in JSON"
+  [id]
+  (let [game-id (str id)
+        result (cache/get-json (str "fluxx-" game-id))]
+    result))
+
+;; API handlers
+(defn draw-cards [{{:keys [id number-of-cards]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        body (fluxx/draw (Integer/parseInt number-of-cards))
+        _ (fluxx/save-game id)] {:status 200 :body body}))
+
+(defn shuffle-game [{{:keys [id]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        _ (fluxx/shuffle-cards)
+        _ (fluxx/save-game id)
+        body (get-json-game-state id)]
+    {:status 200 :body body}))
+
+(defn start-new-game [{{:keys [id]} :path-params}]
+  (let [_ (fluxx/load-game "RESET")
+        _ (fluxx/shuffle-cards)
+        _ (fluxx/save-game id)
+        body (get-json-game-state id)]
+    {:status 200 :body body}))
+
 (def app
   (ring/ring-handler
    (ring/router
@@ -100,6 +129,15 @@
      ["/users/:id" {:get {:summary "request a user by id"
                           :parameters {:path {:id string?}}
                           :handler get-user-by-id}}]
+     ["/game/:id/new-game" {:get {:summary "start a new game"
+                                  :parameters {:path {:id string?}}
+                                  :handler start-new-game}}]
+     ["/game/:id/draw/:number-of-cards" {:get {:summary "take cards from the draw pile"
+                                               :parameters {:path {:id string? :number-of-cards number?}}
+                                               :handler draw-cards}}]
+     ["/game/:id/shuffle" {:get {:summary "shuffle or reset the draw-pile"
+                                 :parameters {:path {:id string?}}
+                                 :handler shuffle-game}}]
      ["/users"
       {:get {:summary "request the list of users"
              :handler get-users}
@@ -162,15 +200,16 @@
   (let [r (zipmap [:name :email :signature] args)
         sig (if-not (nil? (r :signature)) (r :signature) (if-not (nil? (@state :signature)) (@state :signature) "generic-key"))
         _ (identify sig)
+        _ (fluxx/save-game "RESET")
         email (if (not-empty (r :email)) (r :email) "admin@localhost")
         name (r :name)]
-    ;; when we have a name, set local and cloud state accordingly
+    ;; when we have a name, set local and cache state accordingly
     (when-not (nil? name)
       (println "NAME " name)
       (create-user {:body-params {:name name
                                   :email email}})
       (update-cache))
-    ;; otherwise, load state from cloud
+    ;; otherwise, try loading state from cache
     (when (nil? name)
       (println "SIGNATURE: " (@state :signature))
       (let [app-state (cache/get-edn "app-state")]
