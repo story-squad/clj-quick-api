@@ -89,6 +89,11 @@
   [key value]
   (_redis-set (signed-key key) (encode-obj value)))
 
+(defn get-json
+  "Redis-get [key] -> decode [value] -> JSON"
+  [key]
+  (json/read-json (decode-str (_redis-get (signed-key key)))))
+
 (defn get-edn
   "Redis-get [key] -> decode [value] -> JSON -> EDN"
   [key]
