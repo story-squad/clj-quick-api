@@ -2,6 +2,7 @@
   (:require
    [ring.adapter.jetty :as ring-jetty]
    [ring.middleware.cors :refer [wrap-cors]]
+   [ring.middleware.ssl :refer [wrap-forwarded-scheme]]
    [reitit.ring :as ring]
    [reitit.coercion.spec :as spec]
    [reitit.dev.pretty :as pretty]
@@ -70,13 +71,15 @@
 (defn update-page [{{:keys [text]} :body-params {:keys [id]} :path-params}]
   (let [params {:path-params {:id id}}
         old-page (get-page-by-id params)
-        ok (= id ((old-page :body) :id))]
+        ok (= id ((old-page :body) :id))
+        ts (timestamp)
+        ]
     (when ok
-      (swap! state update-in [:pages] conj {:id id :text text})
+      (swap! state update-in [:pages] conj {:id id :text text :ts ts})
       (update-cache))
     (if ok
-      {:status 200 :body {:id id :text text}}
-      {:status 404 :body {:id id :text text :error "page not found"}})))
+      {:status 200 :body {:id id :text text :ts ts}}
+      {:status 404 :body {:id id :text "##error: page not found" :ts ts}})))
 
 (defn delete-page-by-id [{{:keys [id]} :path-params}]
   (let [sig (@state :signature)
@@ -161,7 +164,8 @@
     {:exception pretty/exception
      :data {:coercion spec/coercion
             :muuntaja m/instance
-            :middleware [#(wrap-cors %
+            :middleware [#(wrap-forwarded-scheme %)
+			 #(wrap-cors %
                                      :access-control-allow-origin [#".*"]
                                      :access-control-allow-methods [:get :post :delete])
                          muuntaja/format-middleware
