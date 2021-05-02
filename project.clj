@@ -9,6 +9,7 @@
                  [metosin/reitit "0.5.12"]
                  [metosin/muuntaja "0.6.8"]
                  [ring-cors "0.1.13"]
+                 [ring/ring-ssl "0.3.0"]
                  [com.taoensso/carmine "2.6.2"]
                  [com.wsscode/edn-json "1.1.0"]]
   :main ^:skip-aot quick-api.core
