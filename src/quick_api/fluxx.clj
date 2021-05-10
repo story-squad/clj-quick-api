@@ -6,7 +6,7 @@
 (defn _basic-rules [] {:draw 1 :play 1 :discard {} :limits {}})
 
 ;; create a game state
-(def game (atom {:rules [] :draw-pile [] :discard-pile [] :goal [] :players [] :deck []}))
+(def game (atom {:rules [] :draw-pile [] :discard-pile [] :goal [] :players (sorted-map) :deck []}))
 
 ;; add the basic rules to the game state
 (swap! game update-in [:rules] conj (_basic-rules))
@@ -39,6 +39,9 @@
   ([name desc]
    (_card "rule" name desc)))
 
+(defn rule-card? [card]
+  (= (card :type) "rule"))
+
 (defn goal-card
   ([]
    (goal-card nil))
@@ -47,11 +50,17 @@
   ([name conditions]
    (_card "goal" name conditions)))
 
+(defn goal-card? [card]
+  (= (card :type) "goal"))
+
 (defn action-card
   ([] (action-card nil))
   ([name] (action-card name nil))
   ([name desc]
    (_card "action" name desc)))
+
+(defn action-card? [card]
+  (= (card :type) "action"))
 
 (defn keeper-card
   ([] (keeper-card nil))
@@ -59,6 +68,9 @@
    (keeper-card name name))
   ([name desc]
    (_card "keeper" name desc)))
+
+(defn keeper-card? [card]
+  (= (card :type) "keeper"))
 
 ;; ---- search ----
 (defn cards-of-type
@@ -96,13 +108,66 @@
             (drop n (@game :draw-pile)))]
      n-cards)))
 
+(defn discard
+  "discard a card"
+  [card]
+  (let [_ (swap! game update-in [:discard-pile] conj card)]
+    (count (@game :discard-pile))))
+
+(defn update-goal 
+  [card]
+  (let [_ (swap! game update-in [:goal] conj card)]
+    (last (@game :goal))))
+
 (defn new-rule
   "play a rule-card; append card to :rules"
   ([]
    (println "requires rule-card"))
   ([rule]
    (let [_ (swap! game update-in [:rules] conj rule)]
-     (last (@game :rules)))))
+     (@game :rules))))
+
+(defn player-list
+  "a (list) of {players}"
+  []
+  (map #((@game :players) %) (keys (@game :players))))
+
+(defn find-player
+  "find player by name"
+  [name]
+  (filter #(= (% :name) name) (player-list)))
+
+(defn first-player? [] (= 0 (count (player-list))))
+
+(defn next-available-player-id [] (+ 1 ((last (player-list)) :id)))
+
+(defn join-player
+  "join a player to the game"
+  [name]
+  (let [unique? (= 0 (count (find-player name)))
+        id (if (first-player?) 1 (next-available-player-id))]
+    (when unique?
+      (swap! game update-in [:players] assoc id {:name name :keepers [] :id id}))))
+
+(defn remove-player
+  "remove player from the game"
+  [name]
+  (when (> (count (find-player name)) 0)
+    (let [new-player-list (remove #(= (% :name) name) (player-list))
+          player-ids (map #(% :id) new-player-list)
+          new-player-map (zipmap player-ids new-player-list)]
+      (swap-vals! game assoc :players new-player-map))))
+
+(defn add-keeper
+  "add cards to keeper pile"
+  [player card]
+  (let [name (player :name)
+        old-list (remove #(= (% :name) name) (player-list))
+        new-player (update player :keepers conj card)
+        new-list (conj old-list new-player)
+        player-ids (map #(% :id) new-list)
+        new-player-map (zipmap player-ids new-list)]
+    (swap-vals! game assoc :players new-player-map)))
 
 ;; ---- Keepers ----
 ((fn []

@@ -118,6 +118,38 @@
         body (get-json-game-state id)]
     {:status 200 :body body}))
 
+(defn player-list [{{:keys [id]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        body (fluxx/player-list)]
+    {:status 200 :body body}))
+
+(defn add-player [{{:keys [name]} :body-params {:keys [id]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        body (fluxx/join-player name)
+        _ (fluxx/save-game id)]
+    {:status 200 :body body}))
+
+(defn remove-player [{{:keys [name]} :body-params {:keys [id]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        _ (fluxx/remove-player name)
+        body (fluxx/player-list)
+        _ (fluxx/save-game id)]
+    {:status 200 :body body}))
+
+(defn play-card [{{:keys [card]} :body-params {:keys [id pid]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        player-id (Integer/parseInt pid)
+        player (last (filter #(= player-id (% :id)) (fluxx/player-list)))
+        played (first (fluxx/cards-named card))
+        card-type (played :type)
+        _ (case card-type
+            "keeper" (fluxx/add-keeper player played)
+            "rule" (fluxx/new-rule played)
+            "action" (fluxx/discard played)
+            "goal" (fluxx/update-goal played))
+        _ (fluxx/save-game id)]
+    {:status 200 :body {:card played :player player}}))
+
 (def app
   (ring/ring-handler
    (ring/router
@@ -138,6 +170,18 @@
      ["/game/:id/shuffle" {:get {:summary "shuffle or reset the draw-pile"
                                  :parameters {:path {:id string?}}
                                  :handler shuffle-game}}]
+     ["/game/:id/players" {:get {:summary "returns a list of players of game with id"
+                                 :parameters {:path {:id string?}}
+                                 :handler player-list}}]
+     ["/game/:id/join" {:post {:summary "join a game"
+                               :parameters {:path {:id string?} :body {:name string?}}
+                               :handler add-player}}]
+     ["/game/:id/leave" {:post {:summary "leave a game"
+                                :parameters {:path {:id string?} :body {:name string?}}
+                                :handler remove-player}}]
+     ["/game/:id/player/:pid/play" {:post {:summary "play a card"
+                                           :parameters {:path {:id string? :pid string?} :body {:card string?}}
+                                           :handler play-card}}]
      ["/users"
       {:get {:summary "request the list of users"
              :handler get-users}
