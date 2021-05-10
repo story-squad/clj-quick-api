@@ -30,6 +30,7 @@
   `(car/wcar server-conn ~@body))
 
 (defn test-handler
+  "this handler might... update a list of connected websockets?"
   [msg current-state]
   (println (str "MSG " msg))
   (println (str "STATE " current-state)))
