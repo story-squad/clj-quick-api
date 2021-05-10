@@ -29,6 +29,23 @@
   [& body]
   `(car/wcar server-conn ~@body))
 
+(defn test-handler
+  [msg current-state]
+  (println (str "MSG " msg))
+  (println (str "STATE " current-state)))
+
+(defmacro w-listener
+  [handler-fn init-state & body]
+  `(car/with-new-listener server-conn ~handler-fn ~init-state ~@body))
+
+(defn test-new-listener []
+  (w-listener
+   test-handler
+   {:example "initial state"}
+   (car/ping)
+   (car/set "foo" "bar")
+   (car/get "foo")))
+
 ;; Clojure NOTE: 
 ;; add to core.clj
 ;;
