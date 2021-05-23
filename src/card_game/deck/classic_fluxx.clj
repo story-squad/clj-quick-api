@@ -1,176 +1,8 @@
-(ns quick-api.fluxx
-  (:require [quick-api.cache :as cache])
-  (:require [clojure.string]))
-
-;; define the basic rules of fluxx
-(defn _basic-rules [] {:draw 1 :play 1 :discard {} :limits {}})
-
-;; create a game state
-(def game (atom {:rules [] :draw-pile [] :discard-pile [] :goal [] :players (sorted-map) :deck []}))
-
-;; add the basic rules to the game state
-(swap! game update-in [:rules] conj (_basic-rules))
-
-;; define a card base
-(defn _card
-  ([]
-   (_card nil))
-  ([type]
-   (_card type nil))
-  ([type name]
-   (_card type name nil))
-  ([type name detail]
-   {:type type
-    :name name
-    :detail detail}))
-
-;; ---- Cards ----
-
-(defn add-card
-  "add a card to the deck"
-  [any-card]
-  (when any-card (swap! game update-in [:deck] conj any-card)))
-
-;; ---- types ----
-(defn rule-card
-  ([] (_basic-rules))
-  ([name]
-   (rule-card name []))
-  ([name desc]
-   (_card "rule" name desc)))
-
-(defn rule-card? [card]
-  (= (card :type) "rule"))
-
-(defn goal-card
-  ([]
-   (goal-card nil))
-  ([name]
-   (goal-card name [nil]))
-  ([name conditions]
-   (_card "goal" name conditions)))
-
-(defn goal-card? [card]
-  (= (card :type) "goal"))
-
-(defn action-card
-  ([] (action-card nil))
-  ([name] (action-card name nil))
-  ([name desc]
-   (_card "action" name desc)))
-
-(defn action-card? [card]
-  (= (card :type) "action"))
-
-(defn keeper-card
-  ([] (keeper-card nil))
-  ([name]
-   (keeper-card name name))
-  ([name desc]
-   (_card "keeper" name desc)))
-
-(defn keeper-card? [card]
-  (= (card :type) "keeper"))
-
-;; ---- search ----
-(defn cards-of-type
-  [card-type]
-  (filter #(= (% :type) card-type) (@game :deck)))
-
-(defn cards-named
-  [card-name]
-  (filter #(clojure.string/starts-with? (% :name) card-name) (@game :deck)))
-
-;; ---- shuffle ----
-(defn shuffle-cards
-  []
-  (swap!
-   game assoc :draw-pile
-   (shuffle
-    (or
-     (when
-      (> (count (@game :draw-pile)) 1)
-       (@game :draw-pile))
-     (when
-      (> (count (@game :discard-pile)) 1)
-       (@game :discard-pile))
-     (@game :deck)))))
-
-;; ---- In-Game ----
-
-(defn draw
-  "Draw n-many cards from the draw-pile"
-  ([] (draw 1))
-  ([n]
-   (let [n-cards (take n (@game :draw-pile))
-         _ (swap!
-            game assoc :draw-pile
-            (drop n (@game :draw-pile)))]
-     n-cards)))
-
-(defn discard
-  "discard a card"
-  [card]
-  (let [_ (swap! game update-in [:discard-pile] conj card)]
-    (count (@game :discard-pile))))
-
-(defn update-goal 
-  [card]
-  (let [_ (swap! game update-in [:goal] conj card)]
-    (last (@game :goal))))
-
-(defn new-rule
-  "play a rule-card; append card to :rules"
-  ([]
-   (println "requires rule-card"))
-  ([rule]
-   (let [_ (swap! game update-in [:rules] conj rule)]
-     (@game :rules))))
-
-(defn player-list
-  "a (list) of {players}"
-  []
-  (map #((@game :players) %) (keys (@game :players))))
-
-(defn find-player
-  "find player by name"
-  [name]
-  (filter #(= (% :name) name) (player-list)))
-
-(defn first-player? [] (= 0 (count (player-list))))
-
-(defn next-available-player-id [] (+ 1 ((last (player-list)) :id)))
-
-(defn join-player
-  "join a player to the game"
-  [name]
-  (let [unique? (= 0 (count (find-player name)))
-        id (if (first-player?) 1 (next-available-player-id))]
-    (when unique?
-      (swap! game update-in [:players] assoc id {:name name :keepers [] :id id}))))
-
-(defn remove-player
-  "remove player from the game"
-  [name]
-  (when (> (count (find-player name)) 0)
-    (let [new-player-list (remove #(= (% :name) name) (player-list))
-          player-ids (map #(% :id) new-player-list)
-          new-player-map (zipmap player-ids new-player-list)]
-      (swap-vals! game assoc :players new-player-map))))
-
-(defn add-keeper
-  "add cards to keeper pile"
-  [player card]
-  (let [name (player :name)
-        old-list (remove #(= (% :name) name) (player-list))
-        new-player (update player :keepers conj card)
-        new-list (conj old-list new-player)
-        player-ids (map #(% :id) new-list)
-        new-player-map (zipmap player-ids new-list)]
-    (swap-vals! game assoc :players new-player-map)))
+(ns card-game.deck.classic-fluxx
+  (:require [card-game.deck.cards :refer [keeper-card goal-card action-card rule-card]]))
 
 ;; ---- Keepers ----
-((fn []
+(defn add-keepers [add-card]
    (add-card (keeper-card "Peace" "☮"))
    (add-card (keeper-card "Television" "📺"))
    (add-card (keeper-card "The Sun" "🌞"))
@@ -189,10 +21,10 @@
    (add-card (keeper-card "Chocolate" "🍫"))
    (add-card (keeper-card "The Moon" "🌝"))
    (add-card (keeper-card "Cookies" "🍪"))
-   (add-card (keeper-card "The Rocket" "🚀"))))
+   (add-card (keeper-card "The Rocket" "🚀")))
 
 ;; ---- Goals ----
-((fn []
+(defn add-goals [add-card]
    (add-card (goal-card "Hearts & Minds" ["Love" "The Brain"]))
    (add-card (goal-card "Dreamland" ["Sleep" "Dreams"]))
    (add-card (goal-card "Baked Goods" ["Bread" "Cookies"]))
@@ -222,11 +54,11 @@
    (add-card (goal-card "Toast" ["Bread" "The Toaster"]))
    (add-card (goal-card "The Eye of the Beholder" ["The Eye" "Love"]))
    (add-card (goal-card "10 Cards in hand" ["Cards" 10]))
-   (add-card (goal-card "Party Snacks" ["The Party" "ANY food-keeper"]))))
+   (add-card (goal-card "Party Snacks" ["The Party" "ANY food-keeper"])))
 
 ;; ---- Actions ----
 
-((fn []
+(defn add-action [add-card]
    (add-card (action-card "Take Another Turn" ["PLAY AGAIN" "MAX 2"]))
    (add-card (action-card "Today's Special!" ["SET HAND ASIDE" "DRAW 3" "BIRTHDAY? PLAY 3" "HOLIDAY/ANNIVERSARY? PLAY 2" "OTHERWISE PLAY 1"]))
    (add-card (action-card "Share The Wealth" ["SHUFFLE AND SELF-FIRST DEAL" "IN-PLAY KEEPERS"]))
@@ -249,11 +81,11 @@
    (add-card (action-card "No Limits!" ["DISCARD" "IN-PLAY LIMITS"]))
    (add-card (action-card "Rules Reset" ["RESET RULES TO" "BASIC"]))
    (add-card (action-card "Random Tax" ["DRAW 1 FROM" "EVERY PLAYERS HAND"]))
-   (add-card (action-card "Draw 2 and Use 'Em" ["DRAW AND PLAY 2 FROM" "DRAW-PILE"]))))
+   (add-card (action-card "Draw 2 and Use 'Em" ["DRAW AND PLAY 2 FROM" "DRAW-PILE"])))
 
 ;; ---- Rules ----
 
-((fn []
+(defn add-rules [add-card]
    (add-card (rule-card "Keeper Limit 2" {:limits {:keeper 2}}))
    (add-card (rule-card "Hand Limit 1" {:limits {:hand 1}}))
    (add-card (rule-card "Poor Bonus" {:fewest-keepers "DRAW +1"}))
@@ -280,26 +112,11 @@
    (add-card (rule-card "Goal Mill (free action)" {:goal-mill ["OPTIONAL" "ONCE DURING TURN" "DISCARD ANY OF YOUR GOAL CARDS" "DRAW REPLACEMENTS"]}))
    (add-card (rule-card "Double Agenda" {:alternate-goal []}))
    (add-card (rule-card "Rich Bonus" {:rich-bonus ["OPTIONAL" "PLAYER WITH MOST KEEPERS MAY PLAY 1 EXTRA CARD"]}))
-   (add-card (rule-card "Swap Plays for Draws" {:swap-plays ["OPTIONAL" "DRAW INSTEAD OF PLAY N-MANY CARDS"]}))))
+   (add-card (rule-card "Swap Plays for Draws" {:swap-plays ["OPTIONAL" "DRAW INSTEAD OF PLAY N-MANY CARDS"]})))
 
+(defn load-cards [add-card]
+  (add-rules add-card)
+  (add-keepers add-card)
+  (add-goals add-card)
+  (add-action add-card))
 
-;; ---- Cache ----
-(defn save-game
-  "save game state to cache"
-  ([]
-   (cache/set-object (str "fluxx") @game))
-  ([id]
-   (cache/set-object (str "fluxx-" id) @game)))
-
-(defn load-game
-  "load game from cache"
-  ([id]
-   (let [cached-game (cache/get-edn (str "fluxx-" id))]
-     (when cached-game
-       (reset-vals! game cached-game)))))
-
-(defn reset-game [] (load-game "RESET"))
-
-;; ---- SAVE a restorable copy of the game state ----
-
-(save-game "RESET")

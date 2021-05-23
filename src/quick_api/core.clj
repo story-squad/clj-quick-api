@@ -1,6 +1,5 @@
 (ns quick-api.core
   (:require
-   [ring.adapter.jetty :as ring-jetty]
    [ring.middleware.cors :refer [wrap-cors]]
    [ring.middleware.ssl :refer [wrap-forwarded-scheme]]
    [reitit.ring :as ring]
@@ -16,7 +15,8 @@
    [reitit.ring.middleware.muuntaja :as muuntaja]
    [quick-api.atom :refer [state]]
    [quick-api.cache :as cache]
-   [quick-api.fluxx :as fluxx])
+   [card-game.deck.cards :refer [rule-card]]
+   [card-game.fluxx :as fluxx])
   (:gen-class))
 
 (defn update-cache []
@@ -36,9 +36,9 @@
 (defn timestamp []
   (.getTime (java.util.Date.)))
 
-(defn format-date [format-string]
-  (let [date-form (if-not format-string "MM/dd/yyyy" format-string)]
-    (.format (java.text.SimpleDateFormat. date-form) (new java.util.Date))))
+;; (defn format-date [format-string]
+;;   (let [date-form (if-not format-string "MM/dd/yyyy" format-string)]
+;;     (.format (java.text.SimpleDateFormat. date-form) (new java.util.Date))))
 
 (defn create-user
   [{{:keys [email name]} :body-params}]
@@ -50,9 +50,6 @@
 
 (defn get-user-by-id [{{:keys [id]} :path-params}]
   {:status 200 :body (apply merge (map (fn [u] (when (= id (u :id)) u)) (@state :users)))})
-
-;; (defn get-user-by-email [{{:keys [email]} :path-params}]
-;;   {:status 200 :body (apply merge (map (fn [u] (when (= email (u :email)) u)) (@state :users)))})
 
 (defn create-page [{{:keys [page-data]} :body-params}]
   (if page-data (let [id (str (java.util.UUID/randomUUID))]
@@ -72,8 +69,7 @@
   (let [params {:path-params {:id id}}
         old-page (get-page-by-id params)
         ok (= id ((old-page :body) :id))
-        ts (timestamp)
-        ]
+        ts (timestamp)]
     (when ok
       (swap! state update-in [:pages] conj {:id id :text text :ts ts})
       (update-cache))
@@ -92,7 +88,6 @@
       (identify sig)
       (update-cache))
     (list-pages true)))
-
 
 (defn get-json-game-state
   "return game-state in JSON"
@@ -139,21 +134,37 @@
         _ (fluxx/save-game id)]
     {:status 200 :body body}))
 
-(defn play-card [{{:keys [card]} :body-params {:keys [id pid]} :path-params}]
+(defn play-card [{{:keys [card-name]} :body-params {:keys [id pid]} :path-params}]
   (let [_ (fluxx/load-game id)
         player-id (Integer/parseInt pid)
         player (last (filter #(= player-id (% :id)) (fluxx/player-list)))
-        played (first (fluxx/cards-named card))
-        card-type (played :type)
+        card (first (fluxx/cards-named card-name))
+        card-type (card :type)
         _ (case card-type
-            "keeper" (fluxx/add-keeper player played)
-            "rule" (fluxx/new-rule played)
-            "action" (fluxx/discard played)
-            "goal" (fluxx/update-goal played))
+            "keeper" (fluxx/add-keeper player card)
+            "rule" (fluxx/new-rule card)
+            "action" (fluxx/discard card)
+            "goal" (fluxx/update-goal card))
         _ (fluxx/save-game id)]
-    {:status 200 :body {:card played :player player}}))
+    {:status 200 :body {:card card :player player}}))
 
-(def app
+(defn edit-game [{{:keys [id]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        immutable_card (rule-card "basic rules" {:draw 1 :play 1})
+        mutable_cards (@fluxx/game :deck)]
+    {:status 200 :body {:total (count (@fluxx/game :deck))
+                        :immutable immutable_card
+                        :mutable mutable_cards}}))
+
+(defn edit-card [{{:keys [type name detail]} :body-params {:keys [id card-id]} :path-params}]
+  (let [_ (fluxx/load-game id)
+        old_card (fluxx/card-with-id card-id)
+        new_card {:id card-id :type type :name name :detail detail}
+        _ (fluxx/replace-card card-id new_card)
+        _ (fluxx/save-game id)]
+    {:status 200 :body {:old old_card :new new_card}}))
+
+(def api
   (ring/ring-handler
    (ring/router
     [["/swagger.json"
@@ -164,6 +175,12 @@
      ["/users/:id" {:get {:summary "request a user by id"
                           :parameters {:path {:id string?}}
                           :handler get-user-by-id}}]
+     ["/game/:id/edit" {:get {:summary "list the cards"
+                              :parameters {:path {:id string?}}
+                              :handler edit-game}}]
+     ["/game/:id/edit/:card-id" {:put {:summary "change the content of this card"
+                                       :parameters {:path {:id string? :card-id string?} :body {:type string? :name string? :detail string?}}
+                                       :handler edit-card}}]
      ["/game/:id/new-game" {:get {:summary "start a new game"
                                   :parameters {:path {:id string?}}
                                   :handler start-new-game}}]
@@ -183,7 +200,7 @@
                                 :parameters {:path {:id string?} :body {:name string?}}
                                 :handler remove-player}}]
      ["/game/:id/player/:pid/play" {:post {:summary "play a card"
-                                           :parameters {:path {:id string? :pid string?} :body {:card string?}}
+                                           :parameters {:path {:id string? :pid string?} :body {:card-name string?}}
                                            :handler play-card}}]
      ["/users"
       {:get {:summary "request the list of users"
@@ -209,9 +226,9 @@
      :data {:coercion spec/coercion
             :muuntaja m/instance
             :middleware [#(wrap-forwarded-scheme %)
-			 #(wrap-cors %
+                         #(wrap-cors %
                                      :access-control-allow-origin [#".*"]
-                                     :access-control-allow-methods [:get :post :delete])
+                                     :access-control-allow-methods [:get :post :put :delete])
                          muuntaja/format-middleware
                          ;; swagger feature
                          swagger/swagger-feature
@@ -238,11 +255,7 @@
                :operationsSorter "alpha"}})
     (ring/create-default-handler))))
 
-(defn start []
-  (ring-jetty/run-jetty #'app {:port 8000
-                               :join? false}))
-
-(defn -main
+(defn configure-service
   "[name? email? signature?]"
   [& args]
   (let [r (zipmap [:name :email :signature] args)
@@ -250,17 +263,15 @@
         _ (identify sig)
         _ (fluxx/save-game "RESET")
         email (if (not-empty (r :email)) (r :email) "admin@localhost")
-        name (r :name)]
-    ;; when we have a name, set local and cache state accordingly
-    (when-not (nil? name)
-      (println "NAME " name)
-      (create-user {:body-params {:name name
-                                  :email email}})
-      (update-cache))
-    ;; otherwise, try loading state from cache
-    (when (nil? name)
-      (println "SIGNATURE: " (@state :signature))
-      (let [app-state (cache/get-edn "app-state")]
-        (println "APP_STATE" app-state)
-        (when app-state (reset! state app-state))))
-    (start)))
+        name (if  (empty? (r :name)) "admin" (r :name))]
+    (println "starting API...")
+    ;; create an account
+    (create-user {:body-params {:name name
+                                :email email}})
+    (update-cache)))
+
+(defn init []
+  (configure-service))
+
+(defn destroy []
+  (println "stopping API..."))

@@ -8,6 +8,8 @@ template to bootstrap a Clojure API:
 
 - [Ring](https://github.com/ring-clojure/ring) (a Clojure web applications library inspired by Python's WSGI and Ruby's Rack)
 
+- [Lein Ring](https://github.com/weavejester/lein-ring) (a plugin that automates common Ring tasks)
+
 - [Reitit](https://github.com/metosin/reitit) (A fast data-driven router for Clojure(Script))
 
 - [carmine](https://github.com/ptaoussanis/carmine) (a pure-Clojure Redis client & message queue)
@@ -18,50 +20,46 @@ template to bootstrap a Clojure API:
 
 - [muuntaja](https://github.com/metosin/muuntaja) (Clojure library for fast http format negotiation, encoding and decoding.)
 
-## Installation
+## Requires
 
-Install [Clojure](https://clojure.org) & [Leiningen](https://leiningen.org/#install)
+[Clojure](https://clojure.org), [Leiningen](https://leiningen.org/#install), & [Java](https://adoptopenjdk.net/)
 
-## Usage
+## Environment
 
-to start an interactive REPL,
-```
-lein repl
-```
-start the API
-> note: (-main) is only invoked once, at startup.
-- provide the first user name
-```
-(-main "Admin")
-```
+- PORT
+- SSLPORT
 
-- you may also, in addition to name, provide an email...
+> *read documentation on [Lein Ring](https://github.com/weavejester/lein-ring#environment-variables).
+
+Start a Ring server and open a browser.
 ```
-(-main "Admin" "root@localhost")
+lein ring server
 ```
 
-- and a signature, should you choose to run several variations
+Start a Ring server without opening a browser.
 ```
-(-main "Admin" "root@localhost" "unique-cloud-signature")
+lein ring server-headless
 ```
 
-## Build
+## Compile
 
-create a jar
-
+Create an executable $PROJECT-$VERSION.jar file with dependencies.
 ```
-lein uberjar
+lein ring uberjar
+```
+
+Create an executable $PROJECT-$VERSION.jar file.
+```
+lein ring jar
 ```
 
 ## Run
-> note: run the compiled jar with those [args] you provided to (-main)
-```
-java -jar quick-api-0.1.0-standalone.jar [args]
-```
 
-## Example
+> the compiled jar runs on java.
+>
+> example:
 ```
-java -jar quick-api-0.1.0-standalone.jar "Admin" "root@localhost" "unique-cloud-signature"
+java -jar target/quick-api-0.1.0-standalone.jar
 ```
 
 ...

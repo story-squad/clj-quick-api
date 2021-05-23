@@ -3,11 +3,9 @@
              [taoensso.carmine :as car]
              [com.wsscode.edn-json :as edn-json]
              [quick-api.atom :refer [state]]))
-
 ;; signature should be consistent across platforms.
 ;; a simple template like [app-name][layer][major version][keyname] 
 ;; should suffice and will allow cross-platform information lookups
-
 (defonce app-signature "[QUICK-API][BACKEND][v1]") ; global Application signature
 
 (defn signed-key
@@ -29,23 +27,23 @@
   [& body]
   `(car/wcar server-conn ~@body))
 
-(defn test-handler
-  "this handler might... update a list of connected websockets?"
-  [msg current-state]
-  (println (str "MSG " msg))
-  (println (str "STATE " current-state)))
+;; (defn test-handler
+;;   "this handler might... update a list of connected websockets?"
+;;   [msg current-state]
+;;   (println (str "MSG " msg))
+;;   (println (str "STATE " current-state)))
 
-(defmacro w-listener
-  [handler-fn init-state & body]
-  `(car/with-new-listener server-conn ~handler-fn ~init-state ~@body))
+;; (defmacro w-listener
+;;   [handler-fn init-state & body]
+;;   `(car/with-new-listener server-conn ~handler-fn ~init-state ~@body))
 
-(defn test-new-listener []
-  (w-listener
-   test-handler
-   {:example "initial state"}
-   (car/ping)
-   (car/set "foo" "bar")
-   (car/get "foo")))
+;; (defn test-new-listener []
+;;   (w-listener
+;;    test-handler
+;;    {:example "initial state"}
+;;    (car/ping)
+;;    (car/set "foo" "bar")
+;;    (car/get "foo")))
 
 ;; Clojure NOTE: 
 ;; add to core.clj
@@ -64,7 +62,6 @@
 ;;  (car/set "foo" "bar")
 ;;  (car/get "foo"))
 
-
 ;; encode String
 
 (defn encode-str
@@ -79,10 +76,10 @@
 
 ;; encode non-String
 
-(defn decode-obj
-  "base64 -> JSON string -> EDN"
-  [b64-str]
-  (edn-json/decode-value (decode-str b64-str)))
+;; (defn decode-obj
+;;   "base64 -> JSON string -> EDN"
+;;   [b64-str]
+;;   (edn-json/decode-value (decode-str b64-str)))
 
 (defn encode-obj
   "object -> JSON -> base64"
@@ -107,19 +104,20 @@
   [key value]
   (_redis-set (signed-key key) (encode-obj value)))
 
+;; (defn set-string [key value]
+;;   (_redis-set (signed-key key) (encode-str value)))
+
+(defn get-decoded-string [key]
+  (decode-str (_redis-get (signed-key key))))
+
 (defn get-json
   "Redis-get [key] -> decode [value] -> JSON"
   [key]
-  (json/read-json (decode-str (_redis-get (signed-key key)))))
+  (json/read-json (get-decoded-string key)))
 
 (defn get-edn
   "Redis-get [key] -> decode [value] -> JSON -> EDN"
   [key]
-  (edn-json/json-like->edn (json/read-json (decode-str (_redis-get (signed-key key))))))
-
-(defn set-string [key value]
-  (_redis-set (signed-key key) (encode-str value)))
-
-(defn get-string [key]
-  (decode-str (_redis-get (signed-key key))))
-
+  (let [encoded (or (_redis-get (signed-key key)) "")]
+    (when (> (count encoded) 0)
+      (edn-json/json-like->edn (json/read-json (decode-str encoded))))))
